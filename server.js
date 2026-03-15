@@ -18,19 +18,23 @@ const db = mysql.createConnection({
 // 📍 จุดที่ 1: นำ INSERT ไปใส่ใน API สมัครสมาชิก
 // ==========================================
 app.post('/register', (req, res) => {
-  // 1. รับค่าให้ตรงกับที่แอปส่งมา
-  const { first_name, last_name, email, password } = req.body;
+  const { username, email, password } = req.body;
 
-  // 2. คำสั่ง SQL ยัดลงคอลัมน์ที่มีอยู่จริงในตาราง
-  const sql = "INSERT INTO users (first_name, last_name, email, password) VALUES (?, ?, ?, ?)";
+  const sql = "INSERT INTO users (username, email, password) VALUES (?, ?, ?)";
   
-  db.query(sql, [first_name, last_name, email, password], (err, result) => {
+  db.query(sql, [username, email, password], (err, result) => {
     if (err) {
-      console.error('❌ SQL Error:', err); // ถ้าพัง จะโชว์สาเหตุสีแดงใน Terminal
+      console.error('❌ SQL Error:', err); 
       return res.status(500).json({ status: 'error', message: 'เกิดข้อผิดพลาดที่ฐานข้อมูล' });
     }
+    
     console.log('✅ สมัครสมาชิกสำเร็จ:', email);
-    res.json({ status: 'success', message: 'สมัครสมาชิกสำเร็จ' });
+    // 🌟 จุดที่แก้: ให้ส่ง user กลับไปพร้อมกับ id ที่เพิ่งสร้างใหม่ (result.insertId)
+    res.json({ 
+      status: 'success', 
+      message: 'สมัครสมาชิกสำเร็จ',
+      user: { id: result.insertId, username: username, email: email }
+    });
   });
 });
 
@@ -38,30 +42,27 @@ app.post('/register', (req, res) => {
 // 📍 จุดที่ 2: นำ SELECT ไปใส่ใน API ล็อกอิน
 // ==========================================
 app.post('/login', (req, res) => {
-    // รับค่า Email และ Password จากมือถือ
-    const { email, password } = req.body;
+  const { email, password } = req.body;
 
-    // นำคำสั่ง SQL มาใส่ตรงนี้ครับ 👇 (เพื่อค้นหา user จากอีเมล)
-    const sql = "SELECT * FROM users WHERE email = ?";
-    
-    // สั่งค้นหาในฐานข้อมูล
-    db.query(sql, [email], (err, results) => {
-        if (err) return res.status(500).send("Error");
+  // ค้นหาอีเมลและรหัสผ่านในฐานข้อมูล
+  const sql = "SELECT * FROM users WHERE email = ? AND password = ?";
+  
+  db.query(sql, [email, password], (err, result) => {
+    if (err) {
+      console.error('❌ SQL Error (Login):', err);
+      return res.status(500).json({ status: 'error', message: 'เกิดข้อผิดพลาดที่ฐานข้อมูล' });
+    }
 
-        // ถ้าค้นไม่เจอ (ไม่มีข้อมูลกลับมา)
-        if (results.length === 0) {
-            return res.status(401).send("ไม่พบผู้ใช้งานนี้");
-        }
-
-        // ถ้าค้นเจอ เอา Password มาเทียบกัน
-        const user = results[0];
-        if (user.password !== password) {
-            return res.status(401).send("รหัสผ่านไม่ถูกต้อง");
-        }
-
-        // ถ้าผ่านหมด ให้เข้าสู่ระบบได้
-        res.send("เข้าสู่ระบบสำเร็จ!");
-    });
+    // เช็กว่ามีข้อมูลตรงกันไหม (ความยาวของผลลัพธ์มากกว่า 0 คือเจอข้อมูล)
+    if (result.length > 0) {
+      console.log('✅ เข้าสู่ระบบสำเร็จ:', email);
+      // ส่งข้อมูล user กลับไปให้แอปด้วย เผื่อเอาไปโชว์ชื่อหน้า Home
+      res.json({ status: 'success', message: 'เข้าสู่ระบบสำเร็จ', user: result[0] }); 
+    } else {
+      console.log('❌ เข้าสู่ระบบไม่สำเร็จ: รหัสผิดหรือไม่มีอีเมลนี้');
+      res.status(401).json({ status: 'error', message: 'email หรือ password ไม่ถูกต้อง' });
+    }
+  });
 });
 
 app.listen(3000, () => {
