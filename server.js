@@ -112,6 +112,79 @@ app.get('/saved-events/:user_id', (req, res) => {
     res.json({ status: 'success', data: results });
   });
 });
+// ==========================================
+// 1. API ดึงรีวิวของแต่ละกิจกรรม (พร้อมคำนวณดาวเฉลี่ยให้หน้า Detail)
+// ==========================================
+app.get('/events/:event_id/reviews', (req, res) => {
+  const eventId = req.params.event_id;
+  const sql = `
+      SELECT r.*, u.username 
+      FROM reviews r 
+      JOIN users u ON r.user_id = u.id 
+      WHERE r.event_id = ? 
+      ORDER BY r.created_at DESC
+  `;
+  
+  db.query(sql, [eventId], (err, results) => {
+      if (err) return res.status(500).json({ status: 'error', message: err.message });
+      
+      let totalRating = 0;
+      results.forEach(r => totalRating += r.rating);
+      // ถ้าไม่มีคนรีวิวให้เป็น 0.0 ถ้ามีให้หาค่าเฉลี่ย
+      const averageRating = results.length > 0 ? (totalRating / results.length).toFixed(1) : "0.0";
+      
+      res.json({ status: 'success', reviews: results, averageRating: averageRating, totalReviews: results.length });
+  });
+});
+
+// ==========================================
+// 2. API ส่งรีวิวใหม่ลง Database
+// ==========================================
+app.post('/add-review', (req, res) => {
+  const { user_id, event_id, rating, comment } = req.body;
+  const finalRating = parseInt(rating, 10);
+
+  if (isNaN(finalRating)) return res.status(400).json({ status: 'error', message: 'ค่าคะแนนดาวไม่ถูกต้อง' });
+
+  const sql = "INSERT INTO reviews (user_id, event_id, rating, comment) VALUES (?, ?, ?, ?)";
+  db.query(sql, [user_id, event_id, finalRating, comment], (err, result) => {
+      if (err) return res.status(500).json({ status: 'error', message: err.message });
+      res.json({ status: 'success', message: 'บันทึกรีวิวสำเร็จ' });
+  });
+});
+
+// ==========================================
+// 3. API ดึงดาวเฉลี่ยของ "ทุกกิจกรรม" (ส่งให้หน้า Explore การ์ดโชว์)
+// ==========================================
+app.get('/all-ratings', (req, res) => {
+  const sql = `
+      SELECT event_id, ROUND(AVG(rating), 1) as avg_rating, COUNT(id) as total_reviews 
+      FROM reviews GROUP BY event_id
+  `;
+  db.query(sql, (err, results) => {
+      if (err) return res.status(500).json({ status: 'error' });
+      res.json({ status: 'success', data: results });
+  });
+});
+// ==========================================
+// 4. API ดึงประวัติการรีวิวทั้งหมดของ User คนนั้นๆ
+// ==========================================
+app.get('/user-reviews/:user_id', (req, res) => {
+  const userId = req.params.user_id;
+  // ดึงรีวิว พร้อมกับเชื่อมเอาชื่อกิจกรรม (title) จากตาราง events มาแสดงด้วย
+  const sql = `
+      SELECT r.*, e.title as event_title, e.image_url 
+      FROM reviews r 
+      JOIN events e ON r.event_id = e.id 
+      WHERE r.user_id = ? 
+      ORDER BY r.created_at DESC
+  `;
+  
+  db.query(sql, [userId], (err, results) => {
+      if (err) return res.status(500).json({ status: 'error', message: err.message });
+      res.json({ status: 'success', reviews: results, totalCount: results.length });
+  });
+});
 app.listen(3000, () => {
     console.log('Server is running on port 3000');
 });
